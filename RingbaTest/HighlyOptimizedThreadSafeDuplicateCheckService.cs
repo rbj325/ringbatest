@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.Caching;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -25,13 +27,15 @@ namespace quick_code_test
 
     public class HighlyOptimizedThreadSafeDuplicateCheckService : IDuplicateCheckService
     {
-        private readonly ConcurrentDictionary<int, int> _nonDuplicateIds =
-            new ConcurrentDictionary<int, int>();
+        private readonly MemoryCache _nonDuplicateIds =
+            new MemoryCache("idCache");
 
         [Fact]
         public void IsThisTheFirstTimeWeHaveSeenTest()
         {
+            var numberList = Enumerable.Range(1, 10000000).ToList();
             var idsToAdd = new List<int>() { 1, 2, 1, 2, 3, 4, 5, 3 };
+            idsToAdd.AddRange(numberList);
             var resultsByIndex = new ConcurrentDictionary<long, bool>();
 
             Parallel.ForEach(idsToAdd, (item, state, index) =>
@@ -42,14 +46,13 @@ namespace quick_code_test
             Assert.False(resultsByIndex[0] && resultsByIndex[2], idsToAdd[0] + " has already been added and should return false.");
             Assert.False(resultsByIndex[1] && resultsByIndex[3], idsToAdd[1] + " has already been added and should return false.");
             Assert.False(resultsByIndex[4] && resultsByIndex[7], idsToAdd[4] + " has already been added and should return false.");
-            Assert.True(resultsByIndex[5], idsToAdd[5] + " has not been added and should return true.");
-            Assert.True(resultsByIndex[6], idsToAdd[6] + " has not been added and should return true.");
+            Assert.True(resultsByIndex[13], idsToAdd[13] + " has not been added and should return true.");
         }
 
         /// <summary>
-        /// 
+        /// Checks if the provided id has been seen before.
         /// </summary>
-        /// <param name="id"></param>
+        /// <param name="id">Id that can not be duplicated</param>
         /// <returns>True if the value was not seen before</returns>
         public bool IsThisTheFirstTimeWeHaveSeen(int id)
         {
@@ -58,8 +61,12 @@ namespace quick_code_test
             {
                 throw new ArgumentOutOfRangeException("id");
             }
-
-            return _nonDuplicateIds.TryAdd(id, id);
+            var containsId = _nonDuplicateIds.Contains(id.ToString());
+            if(!containsId)
+            {
+                _nonDuplicateIds.Add(new CacheItem(id.ToString(), id.ToString()), new CacheItemPolicy());
+            }
+            return !containsId;
         }
     }
 }
